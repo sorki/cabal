@@ -45,6 +45,18 @@ import Distribution.Solver.Modular.Version
 import qualified Distribution.Compat.Lens as L
 import qualified Distribution.Types.BuildInfo.Lens as L
 
+-- srk
+import Data.Bifunctor (bimap)
+import Distribution.Version
+import Text.Pretty.Simple
+--import qualified Data.Text as T
+import qualified Data.Text.Lazy as T
+
+tracePrettyId :: Show a => a -> a
+tracePrettyId x = trace (T.unpack $ pShow x) x
+tracePrettyIdDull :: Show a => a -> a
+tracePrettyIdDull x = trace (T.unpack $ pShowNoColor x) x
+
 -- | Convert both the installed package index and the source package
 -- index into one uniform solver index.
 --
@@ -62,7 +74,81 @@ convPIs :: OS -> Arch -> CompilerInfo -> Map PN [LabeledPackageConstraint]
         -> Index
 convPIs os arch comp constraints sip strfl solveExes iidx sidx =
   mkIndex $
-  convIPI' sip iidx ++ convSPI' os arch comp constraints strfl solveExes sidx
+       (map (traceElem trPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
+    ++ (filterRepo $ convSPI' os arch comp constraints strfl solveExes sidx)
+
+--     (groupInstalledSublibs $ convIPI' sip (trace (T.unpack $ pShow iidx) iidx))
+--  ++ (id $ convSPI' os arch comp constraints strfl solveExes sidx)
+
+--     (map (traceElem trPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
+--  ++ (map (traceElem trPackages) $ convSPI' os arch comp constraints strfl solveExes sidx)
+
+filterRepo :: [(PackageName, I, c)] -> [(PackageName, I, c)]
+filterRepo =
+  filter
+    $ \(pn, I _ver _, _) ->
+        elem
+          pn
+          $ map
+              mkPackageName
+          [
+            "multilib-repro"
+          ]
+
+trPackages :: [(PackageName, Version)]
+trPackages =
+  map (bimap mkPackageName mkVersion)
+  [
+    ("attoparsec", [0,14,4])
+  , ("cassava", [0,5,4,1])
+  , ("io-classes", [1,8,0,1])
+  ]
+
+traceElem :: [(PackageName, Version)] -> (PN, I, PInfo) -> (PN, I, PInfo)
+traceElem traced ipn@(pn, I ver _, _) | (pn, ver) `elem` traced =
+  tracePrettyId ipn
+  -- tracePrettyIdDull ipn
+traceElem _ ipn = ipn
+
+-- grouping
+{--
+(PackageName "network-can",I (mkVersion [0,2,0,0]) (Inst (UnitId "network-can-0.2.0.0-KWBzr2iDIQ02PyJ8A8vAF")),PInfo [FlaggedDep,FlaggedDep] (fromList [(ExposedLib LMainLibN
+ame,ComponentInfo {compIsVisible = IsVisible True, compIsBuildable = IsBuildable True})]) (fromList []) Nothing)
+(PackageName "network-can",I (mkVersion [0,2,0,0]) (Inst (UnitId "network-can-0.2.0.0-3tJVtbAUJyw2vuZzlDBPKf-slcan")),PInfo [FlaggedDep,FlaggedDep,FlaggedDep,FlaggedDep,Flag
+gedDep,FlaggedDep,FlaggedDep,FlaggedDep,FlaggedDep] (fromList [(ExposedLib (LSubLibName (UnqualComponentName "slcan")),ComponentInfo {compIsVisible = IsVisible True, compIsB
+uildable = IsBuildable True})]) (fromList []) Nothing)
+(PackageName "network-can",I (mkVersion [0,2,0,0]) (Inst (UnitId "network-can-0.2.0.0-8sIGJ5YXgwiK5kiNnWAIUA-socketcan")),PInfo [FlaggedDep,FlaggedDep,FlaggedDep,FlaggedDep]
+ (fromList [(ExposedLib (LSubLibName (UnqualComponentName "socketcan")),ComponentInfo {compIsVisible = IsVisible True, compIsBuildable = IsBuildable True})]) (fromList []) N
+othing)
+--}
+
+-- | Group packages with the same package name and version,
+-- merge their sub-libraries and dependencies so we get
+-- a similar looking package as if it came from repository.
+groupInstalledSublibs
+  :: [(PN, I, PInfo)]
+  -> [(PN, I, PInfo)]
+groupInstalledSublibs xs =
+  M.elems
+    $ foldl
+        (\acc x@(pn, I ver _, _) ->
+          M.insertWith
+            (\(_, i, info) (_, _i, info') -> (pn, i, mergeInfos info info'))
+            (pn, ver)
+            x
+            acc
+        )
+        M.empty
+        xs
+  where
+  -- flags are probably safe to ignore here as installed are pre-configured anyway
+  mergeInfos :: PInfo -> PInfo -> PInfo
+  mergeInfos (PInfo deps comps flagNfo fr) (PInfo deps' comps' _flagNfo _fr) =
+    PInfo
+      (deps <> deps')
+      (comps <> comps')
+      flagNfo
+      fr
 
 -- | Convert a Cabal installed package index to the simpler,
 -- more uniform index format of the solver.
@@ -85,22 +171,33 @@ convIPI' (ShadowPkgs sip) idx =
 -- | Extract/recover the package ID from an installed package info, and convert it to a solver's I.
 convId :: IPI.InstalledPackageInfo -> (PN, I)
 convId ipi = (pn, I ver $ Inst $ IPI.installedUnitId ipi)
+--  where (MungedPackageId (MungedPackageName pn _) ver) = mungedId ipi
   where MungedPackageId mpn ver = mungedId ipi
         -- HACK. See Note [Index conversion with internal libraries]
-        pn = encodeCompatPackageName mpn
+        pn = case IPI.libVisibility ipi of
+--          LibraryVisibilityPrivate -> encodeCompatPackageName mpn
+          LibraryVisibilityPrivate -> pkgName $ IPI.sourcePackageId ipi
+          LibraryVisibilityPublic -> pkgName $ IPI.sourcePackageId ipi
 
 -- | Convert a single installed package into the solver-specific format.
-convIP :: SI.InstalledPackageIndex -> IPI.InstalledPackageInfo -> (PN, I, PInfo)
+convIP
+  :: SI.InstalledPackageIndex
+  -> IPI.InstalledPackageInfo
+  -> (PN, I, PInfo)
 convIP idx ipi =
   case traverse (convIPId (DependencyReason pn M.empty S.empty) comp idx) (IPI.depends ipi) of
         Left u    -> (pn, i, PInfo [] M.empty M.empty (Just (Broken u)))
         Right fds -> (pn, i, PInfo fds components M.empty Nothing)
  where
-  -- TODO: Handle sub-libraries and visibility.
   components =
-      M.singleton (ExposedLib LMainLibName)
+      M.singleton (ExposedLib $ IPI.sourceLibName ipi)
                   ComponentInfo {
-                      compIsVisible = IsVisible True
+                      compIsVisible = IsVisible $ IPI.libVisibility ipi == LibraryVisibilityPublic
+                    -- XXX/srk: switching to always visible as before
+                    -- prevents  [__3] rejecting: z-attoparsec-z-attoparsec-internal-0.14.4/installed-internal (library 'attoparsec-internal' is private, but it is required by attoparsec)
+                    -- which happens when mangling is enabled for non-visible packages
+
+                    --  compIsVisible = IsVisible True
                     , compIsBuildable = IsBuildable True
                     }
 
@@ -144,12 +241,16 @@ convIP idx ipi =
 -- May return Nothing if the package can't be found in the index. That
 -- indicates that the original package having this dependency is broken
 -- and should be ignored.
-convIPId :: DependencyReason PN -> Component -> SI.InstalledPackageIndex -> UnitId -> Either UnitId (FlaggedDep PN)
+convIPId :: DependencyReason PN
+  -> Component
+  -> SI.InstalledPackageIndex
+  -> UnitId
+  -> Either UnitId (FlaggedDep PN)
 convIPId dr comp idx ipid =
   case SI.lookupUnitId idx ipid of
     Nothing  -> Left ipid
     Just ipi -> let (pn, i) = convId ipi
-                    name = ExposedLib LMainLibName  -- TODO: Handle sub-libraries.
+                    name = ExposedLib $ IPI.sourceLibName ipi
                 in  Right (D.Simple (LDep dr (Dep (PkgComponent pn name) (Fixed i))) comp)
                 -- NB: something we pick up from the
                 -- InstalledPackageIndex is NEVER an executable

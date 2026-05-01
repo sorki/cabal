@@ -57,6 +57,9 @@ data I = I Ver Loc
   deriving (Eq, Ord, Show)
 
 -- | String representation of an instance.
+-- XXX srk, sublib not handled correctly
+--  (Inst (UnitId "network-can-0.2.0.0-KWBzr2iDIQ02PyJ8A8vAF))
+--  (Inst (UnitId "network-can-0.2.0.0-8sIGJ5YXgwiK5kiNnWAIUA-socketcan"))
 showI :: I -> String
 showI (I v InRepo)   = showVer v
 showI (I v (Inst uid)) = showVer v ++ "/installed" ++ extractPackageAbiHash uid
