@@ -56,6 +56,11 @@ import Distribution.Types.UnqualComponentName
     ( unUnqualComponentName )
 
 import Text.PrettyPrint ( nest, render )
+import Text.Pretty.Simple
+import qualified Data.Text.Lazy as T
+
+pShowT :: FailReason -> String
+pShowT = T.unpack . pShow
 
 -- A data type to hold log information from the modular solver.
 data Message =
@@ -298,41 +303,44 @@ showGR UserGoal            = " (user goal)"
 showGR (DependencyGoal dr) = " (dependency of " ++ showDependencyReason dr ++ ")"
 
 showFR :: ConflictSet -> FailReason -> String
-showFR _ (UnsupportedExtension ext)       = " (conflict: requires " ++ showUnsupportedExtension ext ++ ")"
-showFR _ (UnsupportedLanguage lang)       = " (conflict: requires " ++ showUnsupportedLanguage lang ++ ")"
-showFR _ (MissingPkgconfigPackage pn vr)  = " (conflict: pkg-config package " ++ prettyShow pn ++ prettyShow vr ++ ", not found in the pkg-config database)"
-showFR _ (MissingPkgconfigProgram pn vr)  = " (pkg-config package " ++ prettyShow pn ++ prettyShow vr ++ " is needed but no pkg-config executable was found or querying it failed)"
-showFR _ (NewPackageDoesNotMatchExistingConstraint d) = " (conflict: " ++ showConflictingDep d ++ ")"
-showFR _ (ConflictingConstraints d1 d2)   = " (conflict: " ++ L.intercalate ", " (L.map showConflictingDep [d1, d2]) ++ ")"
-showFR _ (NewPackageIsMissingRequiredComponent comp dr) = " (does not contain " ++ showExposedComponent comp ++ ", which is required by " ++ showDependencyReason dr ++ ")"
-showFR _ (NewPackageHasPrivateRequiredComponent comp dr) = " (" ++ showExposedComponent comp ++ " is private, but it is required by " ++ showDependencyReason dr ++ ")"
-showFR _ (NewPackageHasUnbuildableRequiredComponent comp dr) = " (" ++ showExposedComponent comp ++ " is not buildable in the current environment, but it is required by " ++ showDependencyReason dr ++ ")"
-showFR _ (PackageRequiresMissingComponent qpn comp) = " (requires " ++ showExposedComponent comp ++ " from " ++ showQPN qpn ++ ", but the component does not exist)"
-showFR _ (PackageRequiresPrivateComponent qpn comp) = " (requires " ++ showExposedComponent comp ++ " from " ++ showQPN qpn ++ ", but the component is private)"
-showFR _ (PackageRequiresUnbuildableComponent qpn comp) = " (requires " ++ showExposedComponent comp ++ " from " ++ showQPN qpn ++ ", but the component is not buildable in the current environment)"
-showFR _ CannotReinstall                  = " (avoiding to reinstall a package with same version but new dependencies)"
-showFR _ NotExplicit                      = " (not a user-provided goal nor mentioned as a constraint, but reject-unconstrained-dependencies was set)"
-showFR _ Shadowed                         = " (shadowed by another installed package with same version)"
-showFR _ (Broken u)                       = " (package is broken, missing dependency " ++ prettyShow u ++ ")"
-showFR _ UnknownPackage                   = " (unknown package)"
-showFR _ (GlobalConstraintVersion vr (ConstraintSourceProjectConfig pc)) = '\n' : (render . nest 6 $ docProjectConfigPathFailReason vr pc)
-showFR _ (GlobalConstraintVersion vr src) = " (" ++ constraintSource src ++ " requires " ++ prettyShow vr ++ ")"
-showFR _ (GlobalConstraintInstalled src)  = " (" ++ constraintSource src ++ " requires installed instance)"
-showFR _ (GlobalConstraintInstalledSpecificUnitId unitId src)  = " (" ++ constraintSource src ++ " requires installed instance with unit id " ++ prettyShow unitId ++ ")"
-showFR _ (GlobalConstraintSource src)     = " (" ++ constraintSource src ++ " requires source instance)"
-showFR _ (GlobalConstraintFlag src)       = " (" ++ constraintSource src ++ " requires opposite flag selection)"
-showFR _ ManualFlag                       = " (manual flag can only be changed explicitly)"
-showFR c Backjump                         = " (backjumping, conflict set: " ++ showConflictSet c ++ ")"
-showFR _ MultipleInstances                = " (multiple instances)"
-showFR c (DependenciesNotLinked msg)      = " (dependencies not linked: " ++ msg ++ "; conflict set: " ++ showConflictSet c ++ ")"
-showFR c CyclicDependencies               = " (cyclic dependencies; conflict set: " ++ showConflictSet c ++ ")"
-showFR _ (UnsupportedSpecVer ver)         = " (unsupported spec-version " ++ prettyShow ver ++ ")"
+showFR cs x = showFR' cs x <> "\n " <> pShowT x
+
+showFR' :: ConflictSet -> FailReason -> String
+showFR' _ (UnsupportedExtension ext)       = " (conflict: requires " ++ showUnsupportedExtension ext ++ ")"
+showFR' _ (UnsupportedLanguage lang)       = " (conflict: requires " ++ showUnsupportedLanguage lang ++ ")"
+showFR' _ (MissingPkgconfigPackage pn vr)  = " (conflict: pkg-config package " ++ prettyShow pn ++ prettyShow vr ++ ", not found in the pkg-config database)"
+showFR' _ (MissingPkgconfigProgram pn vr)  = " (pkg-config package " ++ prettyShow pn ++ prettyShow vr ++ " is needed but no pkg-config executable was found or querying it failed)"
+showFR' _ (NewPackageDoesNotMatchExistingConstraint d) = " (conflict: " ++ showConflictingDep d ++ ")"
+showFR' _ (ConflictingConstraints d1 d2)   = " (conflict: " ++ L.intercalate ", " (L.map showConflictingDep [d1, d2]) ++ ")"
+showFR' _ (NewPackageIsMissingRequiredComponent comp dr) = " (does not contain " ++ showExposedComponent comp ++ ", which is required by " ++ showDependencyReason dr ++ ")"
+showFR' _ (NewPackageHasPrivateRequiredComponent comp dr) = " (" ++ showExposedComponent comp ++ " is private, but it is required by " ++ showDependencyReason dr ++ ")"
+showFR' _ (NewPackageHasUnbuildableRequiredComponent comp dr) = " (" ++ showExposedComponent comp ++ " is not buildable in the current environment, but it is required by " ++ showDependencyReason dr ++ ")"
+showFR' _ (PackageRequiresMissingComponent qpn comp) = " (requires " ++ showExposedComponent comp ++ " from " ++ showQPN qpn ++ ", but the component does not exist)"
+showFR' _ (PackageRequiresPrivateComponent qpn comp) = " (requires " ++ showExposedComponent comp ++ " from " ++ showQPN qpn ++ ", but the component is private)"
+showFR' _ (PackageRequiresUnbuildableComponent qpn comp) = " (requires " ++ showExposedComponent comp ++ " from " ++ showQPN qpn ++ ", but the component is not buildable in the current environment)"
+showFR' _ CannotReinstall                  = " (avoiding to reinstall a package with same version but new dependencies)"
+showFR' _ NotExplicit                      = " (not a user-provided goal nor mentioned as a constraint, but reject-unconstrained-dependencies was set)"
+showFR' _ Shadowed                         = " (shadowed by another installed package with same version)"
+showFR' _ (Broken u)                       = " (package is broken, missing dependency " ++ prettyShow u ++ ")"
+showFR' _ UnknownPackage                   = " (unknown package)"
+showFR' _ (GlobalConstraintVersion vr (ConstraintSourceProjectConfig pc)) = '\n' : (render . nest 6 $ docProjectConfigPathFailReason vr pc)
+showFR' _ (GlobalConstraintVersion vr src) = " (" ++ constraintSource src ++ " requires " ++ prettyShow vr ++ ")"
+showFR' _ (GlobalConstraintInstalled src)  = " (" ++ constraintSource src ++ " requires installed instance)"
+showFR' _ (GlobalConstraintInstalledSpecificUnitId unitId src)  = " (" ++ constraintSource src ++ " requires installed instance with unit id " ++ prettyShow unitId ++ ")"
+showFR' _ (GlobalConstraintSource src)     = " (" ++ constraintSource src ++ " requires source instance)"
+showFR' _ (GlobalConstraintFlag src)       = " (" ++ constraintSource src ++ " requires opposite flag selection)"
+showFR' _ ManualFlag                       = " (manual flag can only be changed explicitly)"
+showFR' c Backjump                         = " (backjumping, conflict set: " ++ showConflictSet c ++ ")"
+showFR' _ MultipleInstances                = " (multiple instances)"
+showFR' c (DependenciesNotLinked msg)      = " (dependencies not linked: " ++ msg ++ "; conflict set: " ++ showConflictSet c ++ ")"
+showFR' c CyclicDependencies               = " (cyclic dependencies; conflict set: " ++ showConflictSet c ++ ")"
+showFR' _ (UnsupportedSpecVer ver)         = " (unsupported spec-version " ++ prettyShow ver ++ ")"
 -- The following are internal failures. They should not occur. In the
 -- interest of not crashing unnecessarily, we still just print an error
 -- message though.
-showFR _ (MalformedFlagChoice qfn)        = " (INTERNAL ERROR: MALFORMED FLAG CHOICE: " ++ showQFN qfn ++ ")"
-showFR _ (MalformedStanzaChoice qsn)      = " (INTERNAL ERROR: MALFORMED STANZA CHOICE: " ++ showQSN qsn ++ ")"
-showFR _ EmptyGoalChoice                  = " (INTERNAL ERROR: EMPTY GOAL CHOICE)"
+showFR' _ (MalformedFlagChoice qfn)        = " (INTERNAL ERROR: MALFORMED FLAG CHOICE: " ++ showQFN qfn ++ ")"
+showFR' _ (MalformedStanzaChoice qsn)      = " (INTERNAL ERROR: MALFORMED STANZA CHOICE: " ++ showQSN qsn ++ ")"
+showFR' _ EmptyGoalChoice                  = " (INTERNAL ERROR: EMPTY GOAL CHOICE)"
 
 showExposedComponent :: ExposedComponent -> String
 showExposedComponent (ExposedLib LMainLibName)       = "library"
