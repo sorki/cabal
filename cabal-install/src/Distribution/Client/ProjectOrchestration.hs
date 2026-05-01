@@ -1446,7 +1446,7 @@ dieOnBuildFailures verbosity currentCommand plan buildOutcomes
 
     ultimateDeps
       :: UnitId
-      -> [InstallPlan.GenericPlanPackage ElaboratedInstalledPackage ElaboratedConfiguredPackage]
+      -> [InstallPlan.GenericPlanPackage InstalledPackageInfo ElaboratedConfiguredPackage]
     ultimateDeps pkgid =
       filter
         (\pkg -> hasNoDependents pkg && installedUnitId pkg /= pkgid)

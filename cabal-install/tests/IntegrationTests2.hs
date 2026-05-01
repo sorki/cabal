@@ -2348,7 +2348,7 @@ expectPackagePreExisting
   :: ElaboratedInstallPlan
   -> BuildOutcomes
   -> PackageId
-  -> IO ElaboratedInstalledPackage
+  -> IO InstalledPackageInfo
 expectPackagePreExisting plan buildOutcomes pkgid = do
   planpkg <- expectPlanPackage plan pkgid
   case (planpkg, InstallPlan.lookupBuildOutcome planpkg buildOutcomes) of
