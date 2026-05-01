@@ -77,11 +77,11 @@ convPIs os arch comp constraints sip strfl solveExes iidx sidx =
        (map (traceElem trPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
     ++ (filterRepo $ convSPI' os arch comp constraints strfl solveExes sidx)
 
---     (groupInstalledSublibs $ convIPI' sip (trace (T.unpack $ pShow iidx) iidx))
---  ++ (id $ convSPI' os arch comp constraints strfl solveExes sidx)
-
 --     (map (traceElem trPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
 --  ++ (map (traceElem trPackages) $ convSPI' os arch comp constraints strfl solveExes sidx)
+--
+--     (groupInstalledSublibs $ convIPI' sip (trace (T.unpack $ pShow iidx) iidx))
+--  ++ (convSPI' os arch comp constraints strfl solveExes sidx)
 
 filterRepo :: [(PackageName, I, c)] -> [(PackageName, I, c)]
 filterRepo =
@@ -110,18 +110,6 @@ traceElem traced ipn@(pn, I ver _, _) | (pn, ver) `elem` traced =
   -- tracePrettyIdDull ipn
 traceElem _ ipn = ipn
 
--- grouping
-{--
-(PackageName "network-can",I (mkVersion [0,2,0,0]) (Inst (UnitId "network-can-0.2.0.0-KWBzr2iDIQ02PyJ8A8vAF")),PInfo [FlaggedDep,FlaggedDep] (fromList [(ExposedLib LMainLibN
-ame,ComponentInfo {compIsVisible = IsVisible True, compIsBuildable = IsBuildable True})]) (fromList []) Nothing)
-(PackageName "network-can",I (mkVersion [0,2,0,0]) (Inst (UnitId "network-can-0.2.0.0-3tJVtbAUJyw2vuZzlDBPKf-slcan")),PInfo [FlaggedDep,FlaggedDep,FlaggedDep,FlaggedDep,Flag
-gedDep,FlaggedDep,FlaggedDep,FlaggedDep,FlaggedDep] (fromList [(ExposedLib (LSubLibName (UnqualComponentName "slcan")),ComponentInfo {compIsVisible = IsVisible True, compIsB
-uildable = IsBuildable True})]) (fromList []) Nothing)
-(PackageName "network-can",I (mkVersion [0,2,0,0]) (Inst (UnitId "network-can-0.2.0.0-8sIGJ5YXgwiK5kiNnWAIUA-socketcan")),PInfo [FlaggedDep,FlaggedDep,FlaggedDep,FlaggedDep]
- (fromList [(ExposedLib (LSubLibName (UnqualComponentName "socketcan")),ComponentInfo {compIsVisible = IsVisible True, compIsBuildable = IsBuildable True})]) (fromList []) N
-othing)
---}
-
 -- | Group packages with the same package name and version,
 -- merge their sub-libraries and dependencies so we get
 -- a similar looking package as if it came from repository.
@@ -129,19 +117,22 @@ groupInstalledSublibs
   :: [(PN, I, PInfo)]
   -> [(PN, I, PInfo)]
 groupInstalledSublibs xs =
-  M.elems
-    $ foldl
-        (\acc x@(pn, I ver _, _) ->
-          M.insertWith
-            (\(_, i, info) (_, _i, info') -> (pn, i, mergeInfos info info'))
-            (pn, ver)
-            x
-            acc
-        )
-        M.empty
-        xs
+    remapPInfoDepsToInstGroups
+  $ M.elems
+  $ foldl
+      (\acc x@(pn, I ver _, _) ->
+        M.insertWith
+          (\(_, newI, newInfo) (_, oldI, oldInfo) ->
+            (pn, mergeIs oldI newI, mergeInfos oldInfo newInfo)
+          )
+          (pn, ver)
+          x
+          acc
+      )
+      M.empty
+      xs
   where
-  -- flags are probably safe to ignore here as installed are pre-configured anyway
+  -- flags are probably safe to ignore here as they are fixed form installed anyway
   mergeInfos :: PInfo -> PInfo -> PInfo
   mergeInfos (PInfo deps comps flagNfo fr) (PInfo deps' comps' _flagNfo _fr) =
     PInfo
@@ -149,6 +140,43 @@ groupInstalledSublibs xs =
       (comps <> comps')
       flagNfo
       fr
+
+  mergeIs :: I -> I -> I
+  mergeIs (I ver (Inst pId)) (I _ver (Inst subPId)) = I ver (InstGroup pId (S.singleton subPId))
+  mergeIs (I ver (InstGroup pId subPIds)) (I _ver (Inst subPId)) = I ver (InstGroup pId (S.insert subPId subPIds))
+  -- XXX/srk, can't really happen as they are lexicographically ordered
+  mergeIs a b = error $ "Absurd mergeIs" <> show (a,b)
+
+  -- now some deps from convIP/convIPId pass refer to Inst when they should refer to InstGroup
+  remapPInfoDepsToInstGroups :: [(PN, I, PInfo)] -> [(PN, I, PInfo)]
+  remapPInfoDepsToInstGroups xs =
+    let
+      -- Inst -> InstGroup mapping
+      locMap :: Map Loc Loc
+      locMap =
+          M.fromList
+        $ concatMap
+            (\(_pn, I _ver loc, _pInfo) -> case loc of
+              ip@(Inst pId) -> pure $ (ip, ip)
+              g@(InstGroup pId subPIds) ->
+                ((Inst pId, g):(map (\x -> (Inst x,g)) (S.toList subPIds)))
+              InRepo  -> pure $ (InRepo, InRepo)
+            )
+            xs
+
+      remapDep :: FlaggedDep PN -> FlaggedDep PN
+      remapDep (D.Simple (LDep dr (Dep depComp (Fixed (I ver loc)))) comp) =
+        case M.lookup loc locMap of
+          Nothing -> error "Abusrd, can't lookup loc in locMap"
+          Just newLoc -> (D.Simple (LDep dr (Dep depComp (Fixed (I ver newLoc)))) comp)
+      remapDep x = x
+
+    in map
+        (\(pn, i, PInfo deps comps flagNfo fr) ->
+          (pn, i, PInfo (map remapDep deps) comps flagNfo fr)
+        )
+        xs
+
 
 -- | Convert a Cabal installed package index to the simpler,
 -- more uniform index format of the solver.

@@ -52,13 +52,17 @@ convCP iidx sidx (CP qpi fa es ds) =
 
 convPI :: PI QPN -> Either UnitId PackageId
 convPI (PI _ (I _ (Inst pi))) = Left pi
+--- XXX/srk: loosing subPis
+convPI (PI _ (I _ (InstGroup pi _subPis))) = Left pi
 convPI pi                     = Right (packageId (either id id (convConfId pi)))
 
 convConfId :: PI QPN -> Either SolverId {- is lib -} SolverId {- is exe -}
 convConfId (PI (Q (PackagePath _ q) pn) (I v loc)) =
     case loc of
         Inst pi -> Left (PreExistingId sourceId pi)
-        _otherwise
+        --- XXX/srk: loosing subPis
+        InstGroup pi _subPis -> Left (PreExistingId sourceId pi)
+        InRepo
           | QualExe _ pn' <- q
           -- NB: the dependencies of the executable are also
           -- qualified.  So the way to tell if this is an executable

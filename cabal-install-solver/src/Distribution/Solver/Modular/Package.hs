@@ -22,11 +22,14 @@ module Distribution.Solver.Modular.Package
 import Prelude ()
 import Distribution.Solver.Compat.Prelude
 
+import qualified Data.Set as S
+
 import Distribution.Package -- from Cabal
 import Distribution.Pretty (prettyShow)
 
 import Distribution.Solver.Modular.Version
 import Distribution.Solver.Types.PackagePath
+
 
 -- | A package name.
 type PN = PackageName
@@ -49,7 +52,10 @@ type PId = UnitId
 -- package instance via its 'PId'.
 --
 -- TODO: More information is needed about the repo.
-data Loc = Inst PId | InRepo
+data Loc
+  = Inst PId
+  | InstGroup PId (Set PId)
+  | InRepo
   deriving (Eq, Ord, Show)
 
 -- | Instance. A version number and a location.
@@ -57,9 +63,6 @@ data I = I Ver Loc
   deriving (Eq, Ord, Show)
 
 -- | String representation of an instance.
--- XXX srk, sublib not handled correctly
---  (Inst (UnitId "network-can-0.2.0.0-KWBzr2iDIQ02PyJ8A8vAF))
---  (Inst (UnitId "network-can-0.2.0.0-8sIGJ5YXgwiK5kiNnWAIUA-socketcan"))
 showI :: I -> String
 showI (I v InRepo)   = showVer v
 showI (I v (Inst uid)) = showVer v ++ "/installed" ++ extractPackageAbiHash uid
@@ -68,6 +71,17 @@ showI (I v (Inst uid)) = showVer v ++ "/installed" ++ extractPackageAbiHash uid
       case first reverse $ break (=='-') $ reverse (prettyShow xs) of
         (ys, []) -> ys
         (ys, _)  -> '-' : ys
+showI (I v (InstGroup uid subUids)) =
+  showI (I v (Inst uid))
+  <> " installed package group ("
+  <> unwords (map extractPackageAbiHash $ S.toList subUids)
+  <> ")"
+  where
+    extractPackageAbiHash xs =
+      let
+        (reversedSubLib, reversedRest) = break (=='-') $ reverse (prettyShow xs)
+        abiHash = reverse $ takeWhile (/='-') $ drop 1 reversedRest
+      in abiHash <> "-" <> reverse reversedSubLib
 
 -- | Package instance. A package name and an instance.
 data PI qpn = PI qpn I
