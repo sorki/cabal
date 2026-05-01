@@ -1,5 +1,6 @@
 module Distribution.Solver.Modular.IndexConversion
     ( convPIs
+    , tracedPackages
     ) where
 
 import Distribution.Solver.Compat.Prelude
@@ -45,11 +46,10 @@ import Distribution.Solver.Modular.Version
 import qualified Distribution.Compat.Lens as L
 import qualified Distribution.Types.BuildInfo.Lens as L
 
--- srk
+-- XXX/srk
 import Data.Bifunctor (bimap)
 import Distribution.Version
 import Text.Pretty.Simple
---import qualified Data.Text as T
 import qualified Data.Text.Lazy as T
 
 tracePrettyId :: Show a => a -> a
@@ -74,11 +74,11 @@ convPIs :: OS -> Arch -> CompilerInfo -> Map PN [LabeledPackageConstraint]
         -> Index
 convPIs os arch comp constraints sip strfl solveExes iidx sidx =
   mkIndex $
-       (map (traceElem trPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
+       (map (traceElem tracedPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
     ++ (filterRepo $ convSPI' os arch comp constraints strfl solveExes sidx)
 
---     (map (traceElem trPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
---  ++ (map (traceElem trPackages) $ convSPI' os arch comp constraints strfl solveExes sidx)
+--     (map (traceElem tracedPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
+--  ++ (map (traceElem tracedPackages) $ convSPI' os arch comp constraints strfl solveExes sidx)
 --
 --     (groupInstalledSublibs $ convIPI' sip (trace (T.unpack $ pShow iidx) iidx))
 --  ++ (convSPI' os arch comp constraints strfl solveExes sidx)
@@ -95,8 +95,8 @@ filterRepo =
             "multilib-repro"
           ]
 
-trPackages :: [(PackageName, Version)]
-trPackages =
+tracedPackages :: [(PackageName, Version)]
+tracedPackages =
   map (bimap mkPackageName mkVersion)
   [
     ("attoparsec", [0,14,4])

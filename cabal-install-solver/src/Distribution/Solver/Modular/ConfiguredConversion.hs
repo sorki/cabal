@@ -22,15 +22,28 @@ import           Distribution.Solver.Types.SolverPackage
 import           Distribution.Solver.Types.InstSolverPackage
 import           Distribution.Solver.Types.SourcePackage
 
+-- XXX/srk
+import Debug.Trace
+import Text.Pretty.Simple
+import qualified Data.Text.Lazy as T
+import Distribution.Solver.Modular.IndexConversion (tracedPackages)
+import qualified Distribution.InstalledPackageInfo as IPI
+
+tracePrettyId :: Show a => a -> a
+tracePrettyId x = trace (T.unpack $ pShow x) x
+
 -- | Converts from the solver specific result @CP QPN@ into
 -- a 'ResolverPackage', which can then be converted into
 -- the install plan.
-convCP :: SI.InstalledPackageIndex ->
+convCP :: Show loc => SI.InstalledPackageIndex ->
           CI.PackageIndex (SourcePackage loc) ->
           CP QPN -> ResolverPackage loc
 convCP iidx sidx (CP qpi fa es ds) =
   case convPI qpi of
-    Left  pi -> PreExisting $
+    Left  pi ->
+                (if (pkgName . IPI.sourcePackageId . fromJust $ SI.lookupUnitId iidx pi)
+                    `elem` (map fst tracedPackages) then tracePrettyId else id) $
+                PreExisting $
                   InstSolverPackage {
                     instSolverPkgIPI = fromJust $ SI.lookupUnitId iidx pi,
                     instSolverPkgLibDeps = fmap fst ds',
