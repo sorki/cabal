@@ -32,6 +32,7 @@ module Distribution.Client.ProjectPlanning.Types
   , elabComponentName
   , ElaboratedPackageOrComponent (..)
   , ElaboratedComponent (..)
+  , ElaboratedInstalledPackage (..)
   , ElaboratedPackage (..)
   , pkgOrderDependencies
   , ElaboratedPlanPackage
@@ -86,7 +87,7 @@ import Distribution.Backpack
 import Distribution.Backpack.ModuleShape
 
 import Distribution.Compat.Graph (IsNode (..))
-import Distribution.InstalledPackageInfo (InstalledPackageInfo)
+import Distribution.InstalledPackageInfo (InstalledPackageInfo(depends))
 import Distribution.ModuleName (ModuleName)
 import Distribution.Package
 import qualified Distribution.PackageDescription as Cabal
@@ -135,13 +136,40 @@ import Text.PrettyPrint (hsep, parens, text)
 -- connections).
 type ElaboratedInstallPlan =
   GenericInstallPlan
-    InstalledPackageInfo
+    --InstalledPackageInfo
+    ElaboratedInstalledPackage
     ElaboratedConfiguredPackage
 
 type ElaboratedPlanPackage =
   GenericPlanPackage
-    InstalledPackageInfo
+    -- InstalledPackageInfo
+    ElaboratedInstalledPackage
     ElaboratedConfiguredPackage
+
+data ElaboratedInstalledPackage = ElaboratedInstalledPackage
+  { elabInstPackageInfo :: InstalledPackageInfo
+  }
+  deriving (Eq, Show, Generic)
+
+instance Package ElaboratedInstalledPackage where
+  packageId = packageId . elabInstPackageInfo
+
+instance PackageInstalled ElaboratedInstalledPackage where
+  installedDepends = depends . elabInstPackageInfo
+
+instance HasUnitId ElaboratedInstalledPackage where
+  installedUnitId = installedUnitId . elabInstPackageInfo
+
+instance HasConfiguredId ElaboratedInstalledPackage where
+  configuredId = configuredId . elabInstPackageInfo
+
+instance IsNode ElaboratedInstalledPackage where
+  type Key ElaboratedInstalledPackage = UnitId
+  nodeKey = installedUnitId . elabInstPackageInfo
+  nodeNeighbors = depends . elabInstPackageInfo
+
+instance Binary ElaboratedInstalledPackage
+instance Structured ElaboratedInstalledPackage
 
 -- | User-friendly display string for an 'ElaboratedPlanPackage'.
 elabPlanPackageName :: Verbosity -> ElaboratedPlanPackage -> String

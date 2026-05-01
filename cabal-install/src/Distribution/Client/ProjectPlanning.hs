@@ -37,6 +37,7 @@ module Distribution.Client.ProjectPlanning
   ( -- * Types for the elaborated install plan
     ElaboratedInstallPlan
   , ElaboratedConfiguredPackage (..)
+  , ElaboratedInstalledPackage (..)
   , ElaboratedPlanPackage
   , ElaboratedSharedConfig (..)
   , ElaboratedReadyPackage
@@ -1687,12 +1688,12 @@ elaborateInstallPlan
           f _ = Nothing
 
       elaboratedInstallPlan
-        :: LogProgress (InstallPlan.GenericInstallPlan IPI.InstalledPackageInfo ElaboratedConfiguredPackage)
+        :: LogProgress (InstallPlan.GenericInstallPlan ElaboratedInstalledPackage ElaboratedConfiguredPackage)
       elaboratedInstallPlan =
         flip InstallPlan.fromSolverInstallPlanWithProgress solverPlan $ \mapDep planpkg ->
           case planpkg of
             SolverInstallPlan.PreExisting pkg ->
-              return [InstallPlan.PreExisting (instSolverPkgIPI pkg)]
+              return [InstallPlan.PreExisting (ElaboratedInstalledPackage $ instSolverPkgIPI pkg)]
             SolverInstallPlan.Configured pkg ->
               let inplace_doc
                     | shouldBuildInplaceOnly pkg = text "inplace"
@@ -2675,7 +2676,7 @@ shouldBeLocal (SpecificSourcePackage pkg) = case srcpkgSource pkg of
 
 -- | Given a 'ElaboratedPlanPackage', report if it matches a 'ComponentName'.
 matchPlanPkg :: (ComponentName -> Bool) -> ElaboratedPlanPackage -> Bool
-matchPlanPkg p = InstallPlan.foldPlanPackage (p . ipiComponentName) (matchElabPkg p)
+matchPlanPkg p = InstallPlan.foldPlanPackage (p . ipiComponentName . elabInstPackageInfo) (matchElabPkg p)
 
 -- | Get the appropriate 'ComponentName' which identifies an installed
 -- component.
@@ -2709,7 +2710,9 @@ mkCCMapping
   -> (PackageName, Map ComponentName (AnnotatedId ComponentId))
 mkCCMapping =
   InstallPlan.foldPlanPackage
-    ( \ipkg ->
+    ( \eipkg ->
+        let ipkg = elabInstPackageInfo eipkg
+        in
         ( packageName ipkg
         , Map.singleton
             (ipiComponentName ipkg)
@@ -2753,7 +2756,7 @@ mkShapeMapping dpkg =
     (dcid, shape) =
       InstallPlan.foldPlanPackage
         -- Uses Monad (->)
-        (liftM2 (,) IPI.installedComponentId shapeInstalledPackage)
+        (liftM2 (,) (IPI.installedComponentId . elabInstPackageInfo) (shapeInstalledPackage . elabInstPackageInfo))
         (liftM2 (,) elabComponentId elabModuleShape)
         dpkg
     indef_uid =
@@ -2802,7 +2805,7 @@ type InstM a = State InstS a
 getComponentId
   :: ElaboratedPlanPackage
   -> ComponentId
-getComponentId (InstallPlan.PreExisting dipkg) = IPI.installedComponentId dipkg
+getComponentId (InstallPlan.PreExisting dipkg) = IPI.installedComponentId $ elabInstPackageInfo dipkg
 getComponentId (InstallPlan.Configured elab) = elabComponentId elab
 getComponentId (InstallPlan.Installed elab) = elabComponentId elab
 
@@ -3136,7 +3139,7 @@ availableTargets installPlan =
         [ (pkgid, cname, fake, target)
         | pkg <- InstallPlan.toList installPlan
         , (pkgid, cname, fake, target) <- case pkg of
-            InstallPlan.PreExisting ipkg -> availableInstalledTargets ipkg
+            InstallPlan.PreExisting ipkg -> availableInstalledTargets $ elabInstPackageInfo ipkg
             InstallPlan.Installed elab -> availableSourceTargets elab
             InstallPlan.Configured elab -> availableSourceTargets elab
         ]
@@ -3489,7 +3492,7 @@ pruneInstallPlanPass1 pkgs
   -- otherwise we'll do less
   | otherwise = pruned_packages
   where
-    pkgs' :: [InstallPlan.GenericPlanPackage IPI.InstalledPackageInfo PrunedPackage]
+    pkgs' :: [InstallPlan.GenericPlanPackage ElaboratedInstalledPackage PrunedPackage]
     pkgs' = map (mapConfiguredPackage prune) pkgs
 
     prune :: ElaboratedConfiguredPackage -> PrunedPackage

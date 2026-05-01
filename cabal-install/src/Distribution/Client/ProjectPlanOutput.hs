@@ -127,7 +127,7 @@ encodePlanAsJson distDirLayout elaboratedInstallPlan elaboratedSharedConfig =
     planPackageToJ :: ElaboratedPlanPackage -> J.Value
     planPackageToJ pkg =
       case pkg of
-        InstallPlan.PreExisting ipi -> installedPackageInfoToJ ipi
+        InstallPlan.PreExisting elab -> installedPackageInfoToJ $ elabInstPackageInfo elab
         InstallPlan.Configured elab -> elaboratedPackageToJ False elab
         InstallPlan.Installed elab -> elaboratedPackageToJ True elab
     -- Note that the plan.json currently only uses the elaborated plan,
@@ -690,7 +690,7 @@ postBuildProjectStatus
             InstallPlan.Configured _ -> False
 
       selectPlanPackageIdSet
-        :: ( InstallPlan.GenericPlanPackage InstalledPackageInfo ElaboratedConfiguredPackage
+        :: ( InstallPlan.GenericPlanPackage ElaboratedInstalledPackage ElaboratedConfiguredPackage
              -> Bool
            )
         -> Set UnitId

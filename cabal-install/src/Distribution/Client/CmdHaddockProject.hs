@@ -34,6 +34,7 @@ import Distribution.Client.ProjectOrchestration
   )
 import Distribution.Client.ProjectPlanning
   ( ElaboratedConfiguredPackage (..)
+  , ElaboratedInstalledPackage (..)
   , ElaboratedInstallPlan
   , ElaboratedSharedConfig (..)
   , TargetAction (..)
@@ -169,7 +170,7 @@ haddockProjectAction flags _extraArgs globalFlags = do
           sharedConfig :: ElaboratedSharedConfig
           sharedConfig = elaboratedShared buildCtx
 
-          pkgs :: [Either InstalledPackageInfo ElaboratedConfiguredPackage]
+          pkgs :: [Either ElaboratedInstalledPackage ElaboratedConfiguredPackage]
           pkgs = matchingPackages elaboratedPlan
 
       progs <-
@@ -218,9 +219,9 @@ haddockProjectAction flags _extraArgs globalFlags = do
       packageInfos <- fmap (nub . concat) $ for pkgs $ \pkg ->
         case pkg of
           Left package | localStyle -> do
-            let packageName = unPackageName (pkgName $ sourcePackageId package)
+            let packageName = unPackageName (pkgName $ sourcePackageId $ elabInstPackageInfo package)
                 destDir = outputDir </> packageName
-            fmap catMaybes $ for (haddockInterfaces package) $ \interfacePath -> do
+            fmap catMaybes $ for (haddockInterfaces $ elabInstPackageInfo package) $ \interfacePath -> do
               let docDir = takeDirectory interfacePath
               a <- doesFileExist interfacePath
               case a of
@@ -446,7 +447,7 @@ haddockProjectAction flags _extraArgs globalFlags = do
 
     matchingPackages
       :: ElaboratedInstallPlan
-      -> [Either InstalledPackageInfo ElaboratedConfiguredPackage]
+      -> [Either ElaboratedInstalledPackage ElaboratedConfiguredPackage]
     matchingPackages =
       fmap (foldPlanPackage Left Right)
         . InstallPlan.toList

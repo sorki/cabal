@@ -130,8 +130,8 @@ genBoundsAction flags targetStrings globalFlags =
       pkgVersionMap :: Map.Map ComponentId PackageIdentifier
       pkgVersionMap = Map.fromList (map (InstallPlan.foldPlanPackage externalVersion localVersion) (InstallPlan.toList elaboratedPlan'))
 
-      externalVersion :: InstalledPackageInfo -> (ComponentId, PackageIdentifier)
-      externalVersion pkg = (installedComponentId pkg, packageId pkg)
+      externalVersion :: ElaboratedInstalledPackage -> (ComponentId, PackageIdentifier)
+      externalVersion pkg = (installedComponentId $ elabInstPackageInfo pkg, packageId pkg)
 
       localVersion :: ElaboratedConfiguredPackage -> (ComponentId, PackageIdentifier)
       localVersion pkg = (elabComponentId pkg, packageId pkg)
