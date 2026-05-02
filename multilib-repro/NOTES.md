@@ -61,3 +61,133 @@ nothunks)
 [_51] trying: attoparsec-0.14.4/installed-3OIDNSUWze2AVr1XW1152M installed package group (attoparsec-internal)
 [_52] done
 ```
+
+# Current struggle
+
+commit 87d6cfaee6239ed0743b27aca71514651378d061
+Author: sorki <srk@48.io>
+Date:   Fri May 1 12:31:21 2026 +0200
+
+    xxx: trace the current blow up in
+
+    Distribution.Backpack.ConfiguredComponent.toConfiguredComponent
+
+    ```
+    fromList [(CLibName LMainLibName,AnnotatedId {ann_pid = PackageIdentifier {pkgName = PackageName "attoparsec", pkgVersion = mkVersion [0,14,4]}, ann_cname = CLibName LMainLibName, ann_id = ComponentId "attoparsec-0.14.4-3OIDNSUWze2AVr1XW1152M"})]
+    fromList [(CLibName LMainLibName,AnnotatedId {ann_pid = PackageIdentifier {pkgName = PackageName "base", pkgVersion = mkVersion [4,19,2,0]}, ann_cname = CLibName LMainLibName, ann_id = ComponentId "base-4.19.2.0-c961"})]
+    fromList [(CLibName LMainLibName,AnnotatedId {ann_pid = PackageIdentifier {pkgName = PackageName "cassava", pkgVersion = mkVersion [0,5,4,0]}, ann_cname = CLibName LMainLibName, ann_id = ComponentId "cassava-0.5.4.0-3i4AuCN7HJb7FUBTwDBFx5"})]
+    fromList [(CLibName LMainLibName,AnnotatedId {ann_pid = PackageIdentifier {pkgName = PackageName "io-classes", pkgVersion = mkVersion [1,8,0,1]}, ann_cname = CLibName LMainLibName, ann_id = ComponentId "io-classes-1.8.0.1-33ddkjXAD1KJwOJZifrTm7"})]
+
+    Error:
+        Dependency on unbuildable library 'si-timers' from io-classes
+        In the stanza 'library'
+        In the inplace package 'multilib-repro-0.1.0.0'
+    ```
+
+called by `Distribution.Client.ProjectPlanning`
+  `elaborateSolverToComponents` -> `buildComponent` -> `Distribution.Backpack.ConfiguredComponent.toConfiguredComponent`
+
+with `external_lib_cc_map` produced using `mkCCMapping` which adds a singleton with `ipiComponentName` (same module)
+
+```
+-- | Get the appropriate 'ComponentName' which identifies an installed
+-- component.
+ipiComponentName :: IPI.InstalledPackageInfo -> ComponentName
+ipiComponentName = CLibName . IPI.sourceLibName
+```
+
+`mkCCMapping` has `TODO: libify` comming from `commit f4ded04f684a4b0ab7af745bfb98cef356af01a9` with pretty cool message
+but not clear what the TODO means.
+
+Now the trouble is that `InstSolverPackage` built in `Distribution.Solver.Modular.ConfiguredConversion.convCP` has
+only main package IPI (`InstalledPackageInfo`) and no knowledge of sub-library IPIs, BUT the sub-libraries
+propagate via `instSolverPkgLibDeps` so maybe this can be done. Now mkCCMapping gets `ElaboratedPlanPackage`
+(via `external_lib_dep_pkgs`
+  - `external_lib_dep_sids = CD.select (== compSolverName) deps0`
+  - `external_lib_dep_pkgs = concatMap mapDep external_lib_dep_sids`
+)
+
+so mapDep nukes it somewhere
+* `elaborateSolverToComponents (SolverId -> [ElaboratedPlanPackage])`
+* `elaborateSolverToComponents mapDep`
+
+here ..
+
+```
+elaboratedInstallPlan
+        :: LogProgress (InstallPlan.GenericInstallPlan IPI.InstalledPackageInfo ElaboratedConfiguredPackage)
+flip InstallPlan.fromSolverInstallPlanWithProgress solverPlan $ \mapDep planpkg ->
+    case planpkg of
+      SolverInstallPlan.PreExisting pkg ->
+        return [InstallPlan.PreExisting (instSolverPkgIPI pkg)]
+```
+
+
+```
+type ElaboratedPlanPackage =
+   GenericPlanPackage
+     InstalledPackageInfo
+     ElaboratedConfiguredPackage
+```
+so ElaboratedInstalledPackage? (revered)
+or add it to InstalledPackageInfo?? +
+
+
+Now the problem is that we loose the UnitIds in `ConfiguredConversion` so `InstSolverPackage` needs to be extended as well
+
+<couple hours and a beer later>
+
+linkComponent: lookupUid
+CallStack (from HasCallStack):
+  error, called at src/Distribution/Backpack/LinkedComponent.hs:164:30 in Cabal-3.17.0.0-inplace:Distribution.Backpack.LinkedComponent
+
+lookupUid :: ComponentId -> (OpenUnitId, ModuleShape)
+
+lookupUid (ComponentId "io-classes-1.8.0.1-AyfpIG2irg8KU0CSRSiYmS-si-timers")
+
+type LinkedComponentMap = Map ComponentId (OpenUnitId, ModuleShape)
+```
+external_lc_map =
+  Map.fromList $
+    map mkShapeMapping $
+```
+
+`mkShapeMapping` needs full `InstalledPackageInfo` to access exposed modules
+in `shapeInstalledPackage`
+
+now have
+`installedSublibs :: Map UnqualComponentName ComponentId`
+so we need
+`installedSublibs :: Map UnqualComponentName InstalledPackageInfo`
+to tie the knot aww
+
+* We get ComponentId from IPI tad later in mkCCMapping
+  and no need for (Map UnqualComponentName) either it seems
+  sourceLibName = LSubLibName (UnqualComponentName "attoparsec-internal")
+  (ye sourceComponentName = CLibName . sourceLibName)
+
+
+afterwards we need something like
+
+```
+InstallPlan.foldPlanPackage
+  (IPI.installedSublibs)
+  (const [])
+```
+
+reshape and feed each into mkShapeMapping again?
+- Would require wrapping into `ElaboratedPlanPackage` that would fold again
+- mimic `mkShapeMapping` (call `shapeInstalledPackage`) instead
+
+sleep on it.
+
+* expand in more `ProjectPlanning` places
+* renders `mkCCMapping` expansion not necessary
+
+it works! 😹 😹 😹
+
+TODO
+* cleanup tracing
+* cleanup expansion
+* remove ipiComponentName from `ProjectPlanning`
+* better `showI`
