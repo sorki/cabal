@@ -1,12 +1,12 @@
 module Distribution.Solver.Modular.IndexConversion
     ( convPIs
-    , tracedPackages
     ) where
 
 import Distribution.Solver.Compat.Prelude
 import Prelude ()
 
 import qualified Data.List as L
+import qualified Data.Maybe
 import qualified Data.Map.Strict as M
 import qualified Distribution.Compat.NonEmptySet as NonEmptySet
 import qualified Data.Set as S
@@ -46,17 +46,6 @@ import Distribution.Solver.Modular.Version
 import qualified Distribution.Compat.Lens as L
 import qualified Distribution.Types.BuildInfo.Lens as L
 
--- XXX/srk
-import Data.Bifunctor (bimap)
-import Distribution.Version
-import Text.Pretty.Simple
-import qualified Data.Text.Lazy as T
-
-tracePrettyId :: Show a => a -> a
-tracePrettyId x = trace (T.unpack $ pShow x) x
-tracePrettyIdDull :: Show a => a -> a
-tracePrettyIdDull x = trace (T.unpack $ pShowNoColor x) x
-
 -- | Convert both the installed package index and the source package
 -- index into one uniform solver index.
 --
@@ -74,41 +63,8 @@ convPIs :: OS -> Arch -> CompilerInfo -> Map PN [LabeledPackageConstraint]
         -> Index
 convPIs os arch comp constraints sip strfl solveExes iidx sidx =
   mkIndex $
-       (map (traceElem tracedPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
-    ++ (filterRepo $ convSPI' os arch comp constraints strfl solveExes sidx)
-
---     (map (traceElem tracedPackages) $ groupInstalledSublibs $ convIPI' sip iidx)
---  ++ (map (traceElem tracedPackages) $ convSPI' os arch comp constraints strfl solveExes sidx)
---
---     (groupInstalledSublibs $ convIPI' sip (trace (T.unpack $ pShow iidx) iidx))
---  ++ (convSPI' os arch comp constraints strfl solveExes sidx)
-
-filterRepo :: [(PackageName, I, c)] -> [(PackageName, I, c)]
-filterRepo =
-  filter
-    $ \(pn, I _ver _, _) ->
-        elem
-          pn
-          $ map
-              mkPackageName
-          [
-            "multilib-repro"
-          ]
-
-tracedPackages :: [(PackageName, Version)]
-tracedPackages =
-  map (bimap mkPackageName mkVersion)
-  [
-    ("attoparsec", [0,14,4])
-  , ("cassava", [0,5,4,1])
-  , ("io-classes", [1,8,0,1])
-  ]
-
-traceElem :: [(PackageName, Version)] -> (PN, I, PInfo) -> (PN, I, PInfo)
-traceElem traced ipn@(pn, I ver _, _) | (pn, ver) `elem` traced =
-  tracePrettyId ipn
-  -- tracePrettyIdDull ipn
-traceElem _ ipn = ipn
+       (groupInstalledSublibs $ convIPI' sip iidx)
+    ++ (convSPI' os arch comp constraints strfl solveExes sidx)
 
 -- | Group packages with the same package name and version,
 -- merge their sub-libraries and dependencies so we get
@@ -149,7 +105,7 @@ groupInstalledSublibs xs =
 
   -- now some deps from convIP/convIPId pass refer to Inst when they should refer to InstGroup
   remapPInfoDepsToInstGroups :: [(PN, I, PInfo)] -> [(PN, I, PInfo)]
-  remapPInfoDepsToInstGroups xs =
+  remapPInfoDepsToInstGroups ps =
     let
       -- Inst -> InstGroup mapping
       locMap :: Map Loc Loc
@@ -157,25 +113,24 @@ groupInstalledSublibs xs =
           M.fromList
         $ concatMap
             (\(_pn, I _ver loc, _pInfo) -> case loc of
-              ip@(Inst pId) -> pure $ (ip, ip)
+              ip@(Inst _pId) -> pure $ (ip, ip)
               g@(InstGroup pId subPIds) ->
                 ((Inst pId, g):(map (\x -> (Inst x,g)) (S.toList subPIds)))
               InRepo  -> pure $ (InRepo, InRepo)
             )
-            xs
+            ps
 
       remapDep :: FlaggedDep PN -> FlaggedDep PN
       remapDep (D.Simple (LDep dr (Dep depComp (Fixed (I ver loc)))) comp) =
-        case M.lookup loc locMap of
-          Nothing -> error "Abusrd, can't lookup loc in locMap"
-          Just newLoc -> (D.Simple (LDep dr (Dep depComp (Fixed (I ver newLoc)))) comp)
+        let newLoc = Data.Maybe.fromJust $ M.lookup loc locMap
+        in  (D.Simple (LDep dr (Dep depComp (Fixed (I ver newLoc)))) comp)
       remapDep x = x
 
     in map
         (\(pn, i, PInfo deps comps flagNfo fr) ->
           (pn, i, PInfo (map remapDep deps) comps flagNfo fr)
         )
-        xs
+        ps
 
 
 -- | Convert a Cabal installed package index to the simpler,

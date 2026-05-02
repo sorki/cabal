@@ -190,7 +190,7 @@ toConfiguredComponent pkg_descr this_cid lib_dep_map exe_dep_map component = do
                 -- Return all library components
                 forM (NonEmptySet.toList sublibs) $ \lib ->
                   let comp = CLibName lib
-                   in case Map.lookup comp (traceShowId pkg) of
+                   in case Map.lookup comp pkg of
                         Nothing ->
                           dieProgress $
                             text "Dependency on unbuildable"
