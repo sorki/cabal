@@ -77,7 +77,7 @@ import Distribution.Solver.Modular.Message ( renderSummarizedMessage )
 
 -- | Ties the two worlds together: classic cabal-install vs. the modular
 -- solver. Performs the necessary translations before and after.
-modularResolver :: Show loc => SolverConfig -> DependencyResolver loc
+modularResolver :: SolverConfig -> DependencyResolver loc
 modularResolver sc (Platform arch os) cinfo iidx sidx pkgConfigDB pprefs pcs pns =
   uncurry postprocess <$> -- convert install plan
   solve' sc cinfo idx pkgConfigDB pprefs gcs pns

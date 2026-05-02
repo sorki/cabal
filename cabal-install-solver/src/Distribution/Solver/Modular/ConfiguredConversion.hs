@@ -28,7 +28,7 @@ import           Distribution.Solver.Types.SourcePackage
 -- | Converts from the solver specific result @CP QPN@ into
 -- a 'ResolverPackage', which can then be converted into
 -- the install plan.
-convCP :: Show loc => SI.InstalledPackageIndex ->
+convCP :: SI.InstalledPackageIndex ->
           CI.PackageIndex (SourcePackage loc) ->
           CP QPN -> ResolverPackage loc
 convCP iidx sidx (CP qpi fa es ds) =
