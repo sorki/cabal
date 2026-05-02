@@ -1685,6 +1685,7 @@ elaborateInstallPlan
                     )
                   )
           f _ = Nothing
+          -- NOTE/srk: expansion??
 
       elaboratedInstallPlan
         :: LogProgress (InstallPlan.GenericInstallPlan IPI.InstalledPackageInfo ElaboratedConfiguredPackage)
@@ -1692,7 +1693,10 @@ elaborateInstallPlan
         flip InstallPlan.fromSolverInstallPlanWithProgress solverPlan $ \mapDep planpkg ->
           case planpkg of
             SolverInstallPlan.PreExisting pkg ->
-              return [InstallPlan.PreExisting (instSolverPkgIPI pkg)]
+              return
+                $  [InstallPlan.PreExisting (instSolverPkgIPI pkg)]
+                ++ map InstallPlan.PreExisting (IPI.installedSublibs (instSolverPkgIPI pkg))
+              -- NOTE/srk: expansion
             SolverInstallPlan.Configured pkg ->
               let inplace_doc
                     | shouldBuildInplaceOnly pkg = text "inplace"
@@ -2026,7 +2030,16 @@ elaborateInstallPlan
               external_lc_map =
                 Map.fromList $
                   map mkShapeMapping $
-                    external_lib_dep_pkgs ++ concatMap mapDep external_exe_dep_sids
+                    external_lib_dep_pkgs
+                    ++ concatMap mapDep external_exe_dep_sids
+                    ++
+                concatMap
+                  (InstallPlan.foldPlanPackage
+                    (map InstallPlan.PreExisting . IPI.installedSublibs)
+                    (const [])
+                  )
+                  external_lib_dep_pkgs
+
 
               compPkgConfigDependencies =
                 [ ( pn
@@ -2676,6 +2689,9 @@ shouldBeLocal (SpecificSourcePackage pkg) = case srcpkgSource pkg of
 -- | Given a 'ElaboratedPlanPackage', report if it matches a 'ComponentName'.
 matchPlanPkg :: (ComponentName -> Bool) -> ElaboratedPlanPackage -> Bool
 matchPlanPkg p = InstallPlan.foldPlanPackage (p . ipiComponentName) (matchElabPkg p)
+-- ^ FIXME/srk: use IPI.sourceComponentName subIpi
+-- AND remove ipiComponentName
+-- since sourceComponentName = CLibName . sourceLibName
 
 -- | Get the appropriate 'ComponentName' which identifies an installed
 -- component.
@@ -3174,7 +3190,8 @@ availableInstalledTargets ipkg =
       status = TargetBuildable (unitid, cname) TargetRequestedByDefault
       target = AvailableTarget (packageId ipkg) cname status False
       fake = False
-   in [(packageId ipkg, cname, fake, target)]
+   in (packageId ipkg, cname, fake, target):(concatMap availableInstalledTargets (IPI.installedSublibs ipkg))
+   -- NOTE/srk: expansion
 
 availableSourceTargets
   :: ElaboratedConfiguredPackage
@@ -3636,9 +3653,14 @@ pruneInstallPlanPass1 pkgs
                 CD.componentNameToComponent cname
         ]
 
+    -- NOTE/srk: expansion
     availablePkgs =
-      Set.fromList
+      Set.fromList $
         [ installedUnitId pkg
+        | InstallPlan.PreExisting pkg <- pkgs
+        ]
+        ++ concat
+        [ map installedUnitId (IPI.installedSublibs pkg)
         | InstallPlan.PreExisting pkg <- pkgs
         ]
 
