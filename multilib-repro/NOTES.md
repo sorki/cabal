@@ -2,7 +2,6 @@
 
 * `showI` `InstGroup` not quite right
 
-
 ```
 [__0] trying: multilib-repro-0.1.0.0 (user goal)
 [__1] trying: base-4.19.2.0/installed-c961 (dependency of multilib-repro)
@@ -129,14 +128,15 @@ type ElaboratedPlanPackage =
      InstalledPackageInfo
      ElaboratedConfiguredPackage
 ```
-so ElaboratedInstalledPackage? (revered)
+so ElaboratedInstalledPackage? (reverted, bit too intrusive)
 or add it to InstalledPackageInfo?? +
 
 
-Now the problem is that we loose the UnitIds in `ConfiguredConversion` so `InstSolverPackage` needs to be extended as well
+Now the problem is that we loose the `UnitId`s in `ConfiguredConversion` so `InstSolverPackage` needs to be extended as well
 
 <couple hours and a beer later>
 
+```
 linkComponent: lookupUid
 CallStack (from HasCallStack):
   error, called at src/Distribution/Backpack/LinkedComponent.hs:164:30 in Cabal-3.17.0.0-inplace:Distribution.Backpack.LinkedComponent
@@ -146,7 +146,6 @@ lookupUid :: ComponentId -> (OpenUnitId, ModuleShape)
 lookupUid (ComponentId "io-classes-1.8.0.1-AyfpIG2irg8KU0CSRSiYmS-si-timers")
 
 type LinkedComponentMap = Map ComponentId (OpenUnitId, ModuleShape)
-```
 external_lc_map =
   Map.fromList $
     map mkShapeMapping $
@@ -161,11 +160,10 @@ so we need
 `installedSublibs :: Map UnqualComponentName InstalledPackageInfo`
 to tie the knot aww
 
-* We get ComponentId from IPI tad later in mkCCMapping
+* We get `ComponentId` from IPI tad later in mkCCMapping
   and no need for (Map UnqualComponentName) either it seems
   sourceLibName = LSubLibName (UnqualComponentName "attoparsec-internal")
   (ye sourceComponentName = CLibName . sourceLibName)
-
 
 afterwards we need something like
 
@@ -174,20 +172,27 @@ InstallPlan.foldPlanPackage
   (IPI.installedSublibs)
   (const [])
 ```
-
-reshape and feed each into mkShapeMapping again?
+reshape and feed each into `mkShapeMapping` again?
 - Would require wrapping into `ElaboratedPlanPackage` that would fold again
 - mimic `mkShapeMapping` (call `shapeInstalledPackage`) instead
 
 sleep on it.
 
 * expand in more `ProjectPlanning` places
-* renders `mkCCMapping` expansion not necessary
+* renders `mkCCMapping`/`mkShapeMapping` expansion not necessary
+* `elaboratedInstallPlan` expansion is key
+* simply `installedSublibs :: [InstalledPackageInfo]`
 
 it works! 😹 😹 😹
 
 TODO
-* cleanup tracing
-* cleanup expansion
-* remove ipiComponentName from `ProjectPlanning`
-* better `showI`
+* DONE cleanup tracing
+* DONE cleanup expansion (also expands `preexistingInstantiatedPkgs` which seems needed, but not sure how to test, needs backpack)
+* DONE remove ipiComponentName from `ProjectPlanning`
+* DONE better `showI`
+  ```
+  [__4] trying: ghc-bignum-1.3/installed-318a (dependency of base)
+  [__5] trying: io-classes-1.8.0.1/installed-33ddkjXAD1KJwOJZifrTm7 installed package group [AyfpIG2irg8KU0CSRSiYmS-si-timers BaGdHXs1lp9FQhMCWRHZf6-testlib D0v8ulLSaiMH02MEoq5IMb-strict-stm HNLiI1gu2giD5Kw4y1THp7-mtl IAV7RzZprx53hJRtjqIXp5-strict-mvar] (dependency of multilib-repro)
+  [__6] trying: QuickCheck-2.14.3/installed-K2lZjjZUIWxBJtwhV1t22T (dependency of io-classes)
+  ```
+* DONE axe munging
