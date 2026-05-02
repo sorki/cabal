@@ -2688,15 +2688,7 @@ shouldBeLocal (SpecificSourcePackage pkg) = case srcpkgSource pkg of
 
 -- | Given a 'ElaboratedPlanPackage', report if it matches a 'ComponentName'.
 matchPlanPkg :: (ComponentName -> Bool) -> ElaboratedPlanPackage -> Bool
-matchPlanPkg p = InstallPlan.foldPlanPackage (p . ipiComponentName) (matchElabPkg p)
--- ^ FIXME/srk: use IPI.sourceComponentName subIpi
--- AND remove ipiComponentName
--- since sourceComponentName = CLibName . sourceLibName
-
--- | Get the appropriate 'ComponentName' which identifies an installed
--- component.
-ipiComponentName :: IPI.InstalledPackageInfo -> ComponentName
-ipiComponentName = CLibName . IPI.sourceLibName
+matchPlanPkg p = InstallPlan.foldPlanPackage (p . IPI.sourceComponentName) (matchElabPkg p)
 
 -- | Given a 'ElaboratedConfiguredPackage', report if it matches a
 -- 'ComponentName'.
@@ -2728,7 +2720,7 @@ mkCCMapping =
     ( \ipkg ->
         ( packageName ipkg
         , Map.singleton
-            (ipiComponentName ipkg)
+            (IPI.sourceComponentName ipkg)
             -- TODO: libify
             ( AnnotatedId
                 { ann_id = IPI.installedComponentId ipkg
