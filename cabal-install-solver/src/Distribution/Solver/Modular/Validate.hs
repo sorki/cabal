@@ -36,8 +36,6 @@ import Distribution.Solver.Types.PkgConfigDb (PkgConfigDb, pkgConfigPkgIsPresent
 import Distribution.Types.LibraryName
 import Distribution.Types.PkgconfigVersionRange
 
-import Debug.Trace
-
 -- In practice, most constraints are implication constraints (IF we have made
 -- a number of choices, THEN we also have to ensure that). We call constraints
 -- that for which the preconditions are fulfilled ACTIVE. We maintain a set
@@ -307,10 +305,7 @@ checkComponentsInNewPackage :: ComponentDependencyReasons
 checkComponentsInNewPackage required qpn providedComps =
     case M.toList $ deleteKeys (M.keys providedComps) required of
       (missingComp, dr) : _ ->
-          if hacks
-          then Right ()
-          else Left $ mkConflict missingComp dr NewPackageIsMissingRequiredComponent
-
+          Left $ mkConflict missingComp dr NewPackageIsMissingRequiredComponent
       []                    ->
           let failures = lefts
                   [ case () of
@@ -376,9 +371,6 @@ extractNewDeps v b fa sa = go
                                   Just True  -> go td
                                   Just False -> []
 
-hacks :: Bool
-hacks = False
-
 -- | Extend a package preassignment.
 --
 -- Takes the variable that causes the new constraints, a current preassignment
@@ -415,9 +407,7 @@ extend extSupported langSupported pkgPresent newactives ppa = foldM extendSingle
     extendSingle a (LDep dr (Dep dep@(PkgComponent qpn _) ci)) =
       let mergedDep = M.findWithDefault (MergedDepConstrained []) qpn a
       in  case (\ x -> M.insert qpn x a) <$> merge mergedDep (PkgDep dr dep ci) of
-            Left (c, (d, d')) -> if hacks
-                                 then Right a
-                                 else Left (c, ConflictingConstraints d d')
+            Left (c, (d, d')) -> Left (c, ConflictingConstraints d d')
             Right x           -> Right x
 
 -- | Extend a package preassignment with a package choice. For example, when
@@ -436,9 +426,7 @@ extendWithPackageChoice (PI qpn i) ppa =
   in  case (\ x -> M.insert qpn x ppa) <$> merge mergedDep newChoice of
         Left (c, (d, _d')) -> -- Don't include the package choice in the
                               -- FailReason, because it is redundant.
-                              -- XXX: if hacks?
                               Left (c, NewPackageDoesNotMatchExistingConstraint d)
-                              -- Right ppa
         Right x            -> Right x
 
 -- | Merge constrained instances. We currently adopt a lazy strategy for
@@ -459,23 +447,21 @@ extendWithPackageChoice (PI qpn i) ppa =
 -- further. We might apply some heuristics here, such as to change the
 -- order in which we check the constraints.
 merge :: MergedPkgDep -> PkgDep -> Either (ConflictSet, (ConflictingDep, ConflictingDep)) MergedPkgDep
-merge mdf@(MergedDepFixed comp1 vs1 i1) pkgDep@(PkgDep vs2 (PkgComponent p comp2) ci@(Fixed i2))
+merge (MergedDepFixed comp1 vs1 i1) (PkgDep vs2 (PkgComponent p comp2) ci@(Fixed i2))
   | i1 == i2  = Right $ MergedDepFixed comp1 vs1 i1
   | otherwise =
-      traceShow ("MERGEFAIL#1", mdf, pkgDep)
       Left ( (CS.union `on` dependencyReasonToConflictSet) vs1 vs2
            , ( ConflictingDep vs1 (PkgComponent p comp1) (Fixed i1)
              , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
 
-merge mdf@(MergedDepFixed comp1 vs1 i@(I v _)) pkgDep@(PkgDep vs2 (PkgComponent p comp2) ci@(Constrained vr))
+merge (MergedDepFixed comp1 vs1 i@(I v _)) (PkgDep vs2 (PkgComponent p comp2) ci@(Constrained vr))
   | checkVR vr v = Right $ MergedDepFixed comp1 vs1 i
   | otherwise    =
-      traceShow ("MERGEFAIL#2", mdf, pkgDep)
       Left ( createConflictSetForVersionConflict p v vs1 vr vs2
            , ( ConflictingDep vs1 (PkgComponent p comp1) (Fixed i)
              , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
 
-merge mdf@(MergedDepConstrained vrOrigins) pkgDep@(PkgDep vs2 (PkgComponent p comp2) ci@(Fixed i@(I v _))) =
+merge (MergedDepConstrained vrOrigins) (PkgDep vs2 (PkgComponent p comp2) ci@(Fixed i@(I v _))) =
     go vrOrigins -- I tried "reverse vrOrigins" here, but it seems to slow things down ...
   where
     go :: [VROrigin] -> Either (ConflictSet, (ConflictingDep, ConflictingDep)) MergedPkgDep
@@ -483,7 +469,6 @@ merge mdf@(MergedDepConstrained vrOrigins) pkgDep@(PkgDep vs2 (PkgComponent p co
     go ((vr, comp1, vs1) : vros)
        | checkVR vr v = go vros
        | otherwise    =
-           traceShow ("MERGEFAIL#3", mdf, pkgDep)
            Left ( createConflictSetForVersionConflict p v vs2 vr vs1
                 , ( ConflictingDep vs1 (PkgComponent p comp1) (Constrained vr)
                   , ConflictingDep vs2 (PkgComponent p comp2) ci ) )
