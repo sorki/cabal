@@ -2032,14 +2032,6 @@ elaborateInstallPlan
                   map mkShapeMapping $
                     external_lib_dep_pkgs
                     ++ concatMap mapDep external_exe_dep_sids
-                    ++
-                concatMap
-                  (InstallPlan.foldPlanPackage
-                    (map InstallPlan.PreExisting . IPI.installedSublibs)
-                    (const [])
-                  )
-                  external_lib_dep_pkgs
-
 
               compPkgConfigDependencies =
                 [ ( pn
