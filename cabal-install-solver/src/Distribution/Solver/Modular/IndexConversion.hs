@@ -176,11 +176,6 @@ convIP idx ipi =
       M.singleton (ExposedLib $ IPI.sourceLibName ipi)
                   ComponentInfo {
                       compIsVisible = IsVisible $ IPI.libVisibility ipi == LibraryVisibilityPublic
-                    -- XXX/srk: switching to always visible as before
-                    -- prevents  [__3] rejecting: z-attoparsec-z-attoparsec-internal-0.14.4/installed-internal (library 'attoparsec-internal' is private, but it is required by attoparsec)
-                    -- which happens when mangling is enabled for non-visible packages
-
-                    --  compIsVisible = IsVisible True
                     , compIsBuildable = IsBuildable True
                     }
 
