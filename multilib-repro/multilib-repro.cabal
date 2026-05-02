@@ -9,6 +9,7 @@ library
   exposed-modules:     Dummy
   build-depends:       base
                      , attoparsec
+                     -- , attoparsec:attoparsec-internal fails correctly
                      , cassava
 
                      , io-classes
