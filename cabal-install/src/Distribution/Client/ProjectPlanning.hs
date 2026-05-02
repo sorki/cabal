@@ -1672,20 +1672,21 @@ elaborateInstallPlan
 
       preexistingInstantiatedPkgs :: Map UnitId FullUnitId
       preexistingInstantiatedPkgs =
-        Map.fromList (mapMaybe f (SolverInstallPlan.toList solverPlan))
+        Map.fromList (concat $ mapMaybe f (SolverInstallPlan.toList solverPlan))
         where
           f (SolverInstallPlan.PreExisting inst)
             | let ipkg = instSolverPkgIPI inst
             , not (IPI.indefinite ipkg) =
-                Just
-                  ( IPI.installedUnitId ipkg
-                  , ( FullUnitId
-                        (IPI.installedComponentId ipkg)
-                        (Map.fromList (IPI.instantiatedWith ipkg))
-                    )
-                  )
+                let mkEntry x =
+                      ( IPI.installedUnitId x
+                      , ( FullUnitId
+                            (IPI.installedComponentId x)
+                            (Map.fromList (IPI.instantiatedWith x))
+                        )
+                      )
+                in Just $ (mkEntry ipkg):(map mkEntry (IPI.installedSublibs ipkg))
+                -- NOTE/srk: expansion
           f _ = Nothing
-          -- NOTE/srk: expansion??
 
       elaboratedInstallPlan
         :: LogProgress (InstallPlan.GenericInstallPlan IPI.InstalledPackageInfo ElaboratedConfiguredPackage)
@@ -2030,8 +2031,7 @@ elaborateInstallPlan
               external_lc_map =
                 Map.fromList $
                   map mkShapeMapping $
-                    external_lib_dep_pkgs
-                    ++ concatMap mapDep external_exe_dep_sids
+                    external_lib_dep_pkgs ++ concatMap mapDep external_exe_dep_sids
 
               compPkgConfigDependencies =
                 [ ( pn
@@ -3640,11 +3640,8 @@ pruneInstallPlanPass1 pkgs
     -- NOTE/srk: expansion
     availablePkgs =
       Set.fromList $
-        [ installedUnitId pkg
-        | InstallPlan.PreExisting pkg <- pkgs
-        ]
-        ++ concat
-        [ map installedUnitId (IPI.installedSublibs pkg)
+        concat
+        [ (installedUnitId pkg):(map installedUnitId (IPI.installedSublibs pkg))
         | InstallPlan.PreExisting pkg <- pkgs
         ]
 
