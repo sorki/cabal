@@ -20,3 +20,11 @@ library
 
   default-language:    Haskell2010
   ghc-options:         -Wall
+
+executable dummy-main
+  hs-source-dirs:      .
+  main-is:             Main.hs
+  build-depends:       base
+                     , multilib-repro
+                     , io-classes
+                     , io-classes:si-timers
