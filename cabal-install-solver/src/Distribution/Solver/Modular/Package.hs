@@ -71,7 +71,7 @@ showI qpn (I v (Inst uid)) =
     uidPrefix = showQPN qpn <> "-" <> showVer v <> "-"
     renderUid u =
       case L.stripPrefix uidPrefix (prettyShow u) of
-        Nothing -> prettyShow u
+        Nothing -> showVer v
         Just stripped -> stripped
   in
     showVer v <> "/installed-" <> renderUid uid
