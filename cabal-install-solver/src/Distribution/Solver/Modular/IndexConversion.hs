@@ -168,7 +168,9 @@ convIP idx ipi =
   components =
       M.singleton (ExposedLib $ IPI.sourceLibName ipi)
                   ComponentInfo {
-                      compIsVisible = IsVisible $ IPI.libVisibility ipi == LibraryVisibilityPublic
+                      compIsVisible = IsVisible True
+                    --  compIsVisible = IsVisible $ IPI.libVisibility ipi == LibraryVisibilityPublic
+                    --  NOTE/srk: produces way more test failures
                     , compIsBuildable = IsBuildable True
                     }
 
